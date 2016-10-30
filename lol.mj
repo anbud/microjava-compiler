@@ -1,0 +1,14 @@
+program P 
+{
+	void main() 
+	{
+		int a = 999999999999999999;
+		int b = 'a';
+		if(a == b) {
+			print(a)
+		} //komentar
+		a++;
+		--a;
+		//nista
+	}
+}
