@@ -28,6 +28,6 @@ public class Token {
 	public String string;	// token string
 
 	public String toString() {
-		return "line " + line + ", column " + col + " " + Scanner.tokenify(kind);
+		return "line " + line + ", column " + col + " " + Scanner.tokenify(kind) + " " + (kind == Scanner.charCon ? (char) val : "") + (kind == Scanner.number ? val : "") + (kind == Scanner.ident ? string : "");
 	}
 }

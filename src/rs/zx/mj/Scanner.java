@@ -23,7 +23,7 @@ import java.io.*;
 import java.lang.reflect.Field;
 
 public class Scanner {
-	private static final int  // token codes
+	public static final int  // token codes
 	none      = 0,
 	ident     = 1,
 	number    = 2,
@@ -116,16 +116,16 @@ public class Scanner {
 		t.col = col;
 		t.pos = pos;
 		
-		if(ch >= 'A' && ch <= 'z') {
-			int i = 0;
-			int lex[] = new int[256];
+		if((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) {
+			StringBuilder sb = new StringBuilder("");
 			
 			do {
-				lex[i++] = ch;
+				sb.append(ch);
+				
 				nextChar();
-			} while((ch >= 'A' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_');
+			} while((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_');
 			
-			t.string = new String(lex, 0, i);
+			t.string = sb.toString();
 			
 			int ind = java.util.Arrays.binarySearch(key, t.string);
 			
@@ -134,22 +134,22 @@ public class Scanner {
 			else
 				t.kind = ident;
 		} else if(ch >= '0' && ch <= '9') {
-			int i = 0;
-			int lex[] = new int[256]; //overkill
+			StringBuilder sb = new StringBuilder("");
 			
 			do {
-				lex[i++] = ch;
+				sb.append(ch);
+				
 				nextChar();
 			} while(ch >= '0' && ch <= '9');
 			
 			t.kind = number;
 			try {
-				t.val = Integer.parseInt(new String(lex, 0, i));
+				t.val = Integer.parseInt(sb.toString());
 			} catch(NumberFormatException e) {
 				Errors.println(line, col, "Integer out of bounds. (-2^31 <= i <= 2^31)");
 			}
 		} else if(ch == eofCh) {
-			t.kind = none;
+			t.kind = eof;
 		} else if(ch == '{') {
 			t.kind = lbrace;
 			nextChar();
@@ -200,7 +200,6 @@ public class Scanner {
 		} else if(ch == '/') {
 			nextChar();
 			if(ch == '/') {
-				//komentar
 				while(ch != eol && ch != eofCh) nextChar();
 				
 				t = next();
@@ -250,11 +249,31 @@ public class Scanner {
 				t.kind = none;			
 		} else if(ch == '\'') {
 			nextChar();
-			char c = ch;
-			nextChar();
+			
+			if(ch == '\\') {
+				nextChar();
+				
+				if(ch == 'n' || ch == 'r') {
+					switch(ch) {
+					case 'n': t.val = '\n'; break;
+					case 'r': t.val = '\r'; break;
+					}
+					
+					nextChar();
+				} else 
+					t.val = '\\';
+			} else if(ch >= ' ' && ch <= '~') {
+				t.val = ch;
+				nextChar();
+			} else {
+				Errors.println(line, col, "Invalid character.");
+				t.val = ' ';
+				
+				nextChar();
+			}
+			
 			if(ch == '\'') {
 				t.kind = charCon;
-				t.val = c;
 				nextChar();
 			} else 
 				t.kind = none;			
@@ -273,7 +292,7 @@ public class Scanner {
 			for(;;) {
 				Token t = Scanner.next();
 				
-				if(t.kind != none)
+				if(t.kind != eof)
 					System.out.println(t);
 				else
 					break;
