@@ -68,7 +68,7 @@ public class Scanner {
 	eof       = 41;
 	
 	private static char ch;
-	private static int col, line, pos;
+	public static int col, line, pos;
 	private static Reader in;
 	
 	private static final char eofCh = '\u0080';
