@@ -244,18 +244,22 @@ public class Parser {
 		if(sym == ident) {
 			Designator();
 			
-			while(sym == assign || sym == lpar || sym == pplus || sym == mminus) {
-				if(sym == assign) {
-					scan();
-					Expr();
-				} else if(sym == lpar) {
-					scan();
-					if(exprStart.get(sym))
-						ActPars();
-					check(rpar);
-				} else 
-					scan();
+			if(sym == assign) {
+				scan();
+				Expr();
 			}
+			else if(sym == lpar) {
+				scan();
+				if(exprStart.get(sym))
+					ActPars();
+				check(rpar);
+			}
+			else if(sym == pplus)
+				scan();
+			else if(sym == mminus)
+				scan();
+			else
+				synErr("invalid statement");
 			
 			check(semicolon);
 		} else if(sym == if_) {
