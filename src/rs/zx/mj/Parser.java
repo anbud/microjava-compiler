@@ -1,25 +1,11 @@
-/*
- *  MicroJava Compiler 0.0.1
- * 
- *  Copyright (C) 2016 - Andrej Budinčević
- *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
- */
+package kk;
 
-package rs.zx.mj;
-
+import java.beans.Expression;
+import java.lang.Thread.State;
 import java.util.*;
+
+import javax.xml.parsers.FactoryConfigurationError;
+
 
 public class Parser {
 	private static final int  // token codes
@@ -65,7 +51,6 @@ public class Parser {
 		void_     = 39,
 		while_    = 40,
 		eof       = 41;
-	
 	private static final String[] name = { // token names for error messages
 	"none", "indentifier", "number", "char constant", "+", "-", "*", "/", "%",
 	"==", "!=", "<", "<=", ">", ">=", "&&", "||", "=", "++", "--", ";", ",",
@@ -78,6 +63,9 @@ public class Parser {
 	private static int sym;			// always contains la.kind
 	private static int lastErrPos;	// last error position (avoid spurious errors)
 
+	public static int errors = 0;
+	private static int errDist = 3;  
+	
 	private static BitSet exprStart, statStart, statFollow, declStart, declFollow;
 	// private static Obj method;		  // currently compiled method
 	// private static Struct intType;  // shortcut for Tab.intType
@@ -107,326 +95,768 @@ public class Parser {
 		// Tab.init(); Code.init();
 		// intType = Tab.intType; charType = Tab.charType;
 		scan();
-		Program();
+		BitSet sux = new BitSet();
+		sux.set(eof);
+		Program(sux);
 		if (sym != eof) synErr("end of file found before end of program");
 		// if (Code.mainPc < 0) semErr("program contains no 'main' method");
 		// Tab.dumpScope(Tab.topScope.locals);
 	}
 	
-	
-	
-	public static void synErr(String msg) {
-		Errors.println(Scanner.line, Scanner.col, msg);
-		System.exit(0);
-	}
-	
-	public static void scan() {
+	private static void scan() 
+	{
 		t = la;
 		la = Scanner.next();
 		sym = la.kind;
+		errDist++;
 	}
 	
-	public static void check(int exp) {
-		if(exp == sym) 
-			scan();
-		else
-			synErr("Expected " + name[exp]);
-	}
-	//The actual grammar
-	
-	public static void Program() {
-		check(program_);
-		check(ident);
-		while(sym == final_ || sym == ident || sym == class_) 
-			if(sym == final_)
-				ConstDecl();
-			else if(sym == ident) 
-				VarDecl();
-			else 
-				ClassDecl();
-			
-		check(lbrace);
-		while(sym == ident || sym == void_)
-			MethodDecl();
-		
-		check(rbrace);
+	private static void synErr(String s)
+	{
+		System.out.println(s);
+		System.exit(1);
 	}
 	
-	public static void ConstDecl() {
-		check(final_);
-		Type();
-		check(ident);
-		check(assign);
-		
-		if(sym == number || sym == charCon)
-			scan();
-		else
-			synErr("Number or char constant expected");
-		
-		check(semicolon);
+	private static void check (int expected, BitSet sux) 
+	{
+		if (sym == expected) scan();  // recognized => read ahead
+		else error(name[expected] + " expected", sux);
 	}
 	
-	public static void VarDecl() {
-		Type();
-		check(ident);
+	private static void error (String msg, BitSet sux) 
+	{
+//		System.out.println("line " + la.line + " col " + la.col + ": " + msg);
+//		errors++;
+//		while (!sux.get(sym)) scan();
 		
-		while(sym == comma) {
-			scan();
-			check(ident);
+		if (errDist >= 0) {
+			System.out.println("line " + la.line + " col " + la.col + ": " + msg);
+			errors++;
 		}
-		
-		check(semicolon);		
+		while (!sux.get(sym)) scan();
+		errDist = 0;  // counting is restarted
+
 	}
 	
-	public static void ClassDecl() {
-		check(class_);
-		check(ident);
-		check(lbrace);
-		
-		while(sym == ident)
-			VarDecl();
-		
-		check(rbrace);
+	private static BitSet add (BitSet a, BitSet b) 
+	{
+		BitSet c = (BitSet) a.clone();
+		c.or(b);
+		return c;
 	}
 	
-	public static void MethodDecl() {
-		if(sym == void_) 
-			scan();
-		else if(sym == ident)
-			Type();
-		else
-			synErr("Type or void expected!");
-		
-		check(ident);
-		check(lpar);
-		
-		if(sym == ident)
-			FormPars();
-		
-		check(rpar);
-		
-		while(sym == ident)
-			VarDecl();
-		
-		Block();
+//	private static BitSet add(BitSet a, int[] b)
+//	{
+//		BitSet c = (BitSet) a.clone();
+//		for (int i : b)
+//			c.set(i);
+//		return c;
+//	}
+	
+	private static BitSet add(BitSet a, int... b)
+	{
+		BitSet c = (BitSet) a.clone();
+		for (int i : b)
+			c.set(i);
+		return c;
 	}
 	
-	public static void FormPars() {
-		Type();
-		check(ident);
+	private static void Program(BitSet sux)
+	{
+//		Program 	=	"program" ident {ConstDecl | VarDecl | ClassDecl} 
+//		"{" {MethodDecl} "}".
 		
-		while(sym == comma) {
-			scan();
-			Type();
-			check(ident);
-		}
-	}
-	
-	public static void Type() {
-		check(ident);
+		BitSet bsAll = new BitSet();
+		bsAll = add(bsAll, new int[] {ident, final_, class_, lbrace, void_, rbrace});
 		
-		if(sym == lbrack) {
-			scan();
-			check(rbrack);
-		}
-	}
-	
-	public static void Block() {
-		check(lbrace);
+		check(program_, add(sux, bsAll));
+		check(ident, add(sux, bsAll));
 		
-		while(statStart.get(sym))
-			Statement();
+		BitSet bsAfterLoop = new BitSet();
+		bsAfterLoop = add(bsAfterLoop, new int[] {lbrace, ident, void_, rbrace});
 		
-		check(rbrace);
-	}
-	
-	public static void Statement() {
-		if(sym == ident) {
-			Designator();
-			
-			if(sym == assign) {
-				scan();
-				Expr();
+		BitSet bsBeginLoop = new BitSet();
+		bsBeginLoop = add(bsBeginLoop, new int[] {final_, ident, class_});
+		
+		while (true)
+		{
+			if (bsBeginLoop.get(sym))
+			{
+				if (sym == final_)
+					ConstDecl(add(sux, bsAll));
+				else if (sym == ident)
+					VarDecl(add(sux, bsAll));
+				else
+					ClassDecl(add(sux, bsAll));
 			}
-			else if(sym == lpar) {
-				scan();
-				if(exprStart.get(sym))
-					ActPars();
-				check(rpar);
-			}
-			else if(sym == pplus)
-				scan();
-			else if(sym == mminus)
-				scan();
+			else if (bsAfterLoop.get(sym) || sux.get(sym))
+				break;
 			else
-				synErr("invalid statement");
-			
-			check(semicolon);
-		} else if(sym == if_) {
+				error("Greska - Program.", add(sux, bsAll));
+		}
+		
+		check(lbrace, add(sux, new int[] {ident, void_, rbrace}));
+		
+		while (true)
+		{
+			if (sym == ident || sym == void_)
+				MethodDecl(add(sux, new int[] {ident, void_, rbrace}));
+			else if (sym == rbrace || sux.get(sym))
+				break;
+			else
+				error("Greska - Program.", add(sux, new int[] {ident, void_, rbrace}));
+		}
+		
+		check(rbrace, sux);
+	}
+	
+	private static void ConstDecl(BitSet sux)
+	{
+//		ConstDecl	=	"final" Type ident "=" (number | charConst) ";".
+		
+		BitSet bsAll = new BitSet();
+		bsAll = add(bsAll, new int[] {ident, assign, number, charCon, semicolon});
+		
+		check(final_, add(sux, bsAll));
+		Type(add(sux, bsAll));
+		
+		bsAll.clear(ident);
+		check(ident, add(sux, bsAll));
+		
+		bsAll.clear(assign);
+		check(assign, add(sux, bsAll));
+		
+		if (sym != number && sym != charCon)
+			error("Greska - ConstDecl.", add(sux, bsAll));
+		
+		if (sym == number || sym == charCon)
 			scan();
-			check(lpar);
-			Condition();
-			check(rpar);
-			Statement();
-			
-			if(sym == else_) {
+		
+		check(semicolon, sux);	
+	}
+	
+	private static void VarDecl(BitSet sux)
+	{
+//		VarDecl	=	Type ident {"," ident } ";".
+		
+		Type(add(sux, ident, comma, semicolon));
+		
+		check(ident, add(sux, new int[] {comma, semicolon}));
+		
+		while (true)
+		{
+			if (sym == comma)
+			{
 				scan();
-				Statement();
+				check(ident, add(sux, new int[] {comma, semicolon}));
 			}
-		} else if(sym == while_) {
+			else if (sym == semicolon || sux.get(sym))
+				break;
+			else
+				error("Greska - VarDecl - ocekivan token comma, a ne " + name[sym], add(sux, new int[] {comma, semicolon}));
+		}
+		
+		check(semicolon, sux);
+	}
+	
+	private static void ClassDecl(BitSet sux)
+	{
+//		ClassDecl	=	"class" ident "{" {VarDecl} "}".
+		
+		check(class_, add(sux, new int[] {ident, lbrace, rbrace}));
+		
+		check(ident, add(sux, new int[] {lbrace, ident, rbrace}));
+		
+		check(lbrace, add(sux, new int[] {ident, rbrace}));
+		
+		while (true)
+		{
+			if (sym == ident)
+				VarDecl(add(sux, new int[] {ident, rbrace}));
+			else if (sym == rbrace || sux.get(sym))
+				break;
+			else
+				error("Greska - ClassDecl.", add(sux, new int[] {ident, rbrace}));
+		}
+		
+		check(rbrace, sux);
+	}
+	
+	private static void MethodDecl(BitSet sux)
+	{
+//		MethodDecl	=	(Type | "void") ident "(" [FormPars] ")" {VarDecl} Block.
+		
+		BitSet bsAll = new BitSet();
+		bsAll = add(bsAll, new int[] {ident, void_, lpar, rpar, lbrace});
+		if (sym != ident && sym != void_)
+			error("Greska - MethodDecl.", add(sux, bsAll));
+		
+		bsAll.clear(void_); // bsAll = {ident, lpar, rpar, lbrace}
+		if (sym == ident)
+			Type(add(sux, bsAll));
+		else if (sym == void_)
 			scan();
-			check(lpar);
-			Condition();
-			check(rpar);
-			Statement();
-		} else if(sym == break_) {
+		
+		check(ident, add(sux, bsAll));
+		
+		bsAll.clear(lpar); // bsAll = {ident, rpar, lbrace}
+		check(lpar, add(sux, bsAll));
+		
+		if (sym != ident && sym != rpar)
+			error("Greska - FormPars.", add(sux, bsAll));
+		
+		if (sym == ident)
+			FormPars(add(sux, bsAll));
+		
+		bsAll.clear(rpar); // bsAll = {ident, lbrace}
+		check(rpar, add(sux, bsAll));
+		
+		while (true)
+		{
+			if (sym == ident)
+				VarDecl(add(sux, bsAll));
+			else if (sym == lbrace || sux.get(sym))
+				break;
+			else
+				error("Greska - MethodDecl.", add(sux, bsAll));
+		}
+		
+		Block(sux);
+	}
+	
+	private static void FormPars(BitSet sux)
+	{
+//		FormPars	=	Type ident  {"," Type ident}.
+		
+		BitSet bs = new BitSet();
+		bs = add(bs, new int[] {ident, comma});
+		Type(add(sux, bs));
+		
+		BitSet bsComma = new BitSet();
+		bsComma = add(bsComma, new int[] {comma});
+		check(ident, add(sux, bsComma));
+		
+		while (true)
+		{
+			if (sym == comma)
+			{
+				scan();
+				Type(add(sux, bs));
+				check(ident, add(sux, bsComma));
+			}
+			else if (sux.get(sym))
+					break;
+			else
+				error("Greska - FormPars", add(sux, bsComma));
+		}
+	}
+	
+	private static void Type(BitSet sux)
+	{
+//		Type	=	ident ["[" "]"].
+		
+		check(ident, add(sux, new int[] {lbrack}));
+		
+		if (sym != lbrack && !sux.get(sym))
+			error("Greska - Type.", add(sux, new int[] {lbrack}));
+		
+		if (sym == lbrack)
+		{
 			scan();
-			check(semicolon);
-		} else if(sym == return_) {
+			check(rbrack, sux);
+		}
+	}
+	
+	private static void Block(BitSet sux)
+	{
+//		Block	= "{" {Statement} "}".
+		
+		BitSet bs = new BitSet();
+		bs = add(bs, statStart);
+		bs.set(rbrace);
+		
+		check(lbrace, add(sux, bs));
+		
+		while (true)
+		{
+			if (statStart.get(sym))
+				Statement(add(sux, bs));
+			else if (sym == rbrace || sux.get(sym))
+				break;
+			else
+				error("Greska - Block.", add(sux, bs));
+		}
+		
+		check(rbrace, sux);
+	}
+	
+	private static void Statement(BitSet sux)
+	{
+//		Statement	=	Designator ("=" Expr | "(" [ActPars] ")" | "++" | "--") ";"
+//				|	"if" "(" Condition ")" Statement ["else" Statement]
+//				|	"while" "(" Condition ")" Statement
+//				|	"break" ";"
+//				|	"return" [Expr] ";"
+//				|	"read" "(" Designator ")" ";"
+//				|	"print" "(" Expr ["," number] ")" ";"
+//				|	Block
+//				|	";".
+		if (!statStart.get(sym))
+			error("Greska - Statement.", add(sux, statStart));
+		
+//		Designator ("=" Expr | "(" [ActPars] ")" | "++" | "--") ";"
+		
+		if (sym == ident)
+		{
+			Designator(add(sux, new int[] {assign, lpar, pplus, mminus, semicolon}));
+			
+			if (sym != assign && sym != lpar && sym != pplus && sym != mminus)
+				error("Greska - Statement.", add(sux, new int[] {assign, lpar, pplus, mminus, semicolon}));
+			
+			if (sym == assign)
+			{
+				scan();
+				Expr(add(sux, new int[] {semicolon}));
+			}
+			else if (sym == lpar)
+			{
+				scan();
+				
+				if (!exprStart.get(sym) && sym != rpar)
+					error("Greska - Statement.", add(add(sux, new int[] {rpar, semicolon}), exprStart));
+				
+				if (exprStart.get(sym))
+					ActPars(add(sux, new int[] {rpar, semicolon}));
+				
+				check(rpar, add(sux, new int[] {semicolon}));
+			}
+			else if (sym == pplus || sym == mminus)
+				scan();
+			
+			check(semicolon, sux);
+		}
+		
+//		|	"if" "(" Condition ")" Statement ["else" Statement]
+		
+		else if (sym == if_)
+		{
+			BitSet bs = new BitSet();
+			bs = add(bs, exprStart);
+			bs = add(bs, statStart);
+			bs = add(bs, new int[] {rpar, else_});
+			
+			scan();
+			check(lpar, add(sux, bs));
+			
+			bs = add(bs, statStart);
+			bs = add(bs, new int[] {rpar, else_});
+			
+			Condition(add(sux, bs));
+			
+			bs.clear(rpar);
+			check(rpar, add(sux, bs));
+			
+			Statement(add(sux, new int[] {else_}));
+			
+			if (sym != else_ && !sux.get(sym))
+				error("Greska - Statement.", add(sux, new int[] {else_}));
+			
+			if (sym == else_)
+			{
+				scan();
+				Statement(sux);
+			}	
+		}
+		
+//		|	"while" "(" Condition ")" Statement
+		
+		else if (sym == while_)
+		{
+			BitSet bs = new BitSet();
+			bs = add(bs, exprStart);
+			bs = add(bs, statStart);
+			bs.set(rpar);
+			
+			scan();
+			check(lpar, add(sux, bs));
+			
+			bs = add(bs, statStart);
+			bs.set(rpar);
+			
+			Condition(add(sux, bs));
+			
+			bs.clear(rpar);
+			check(rpar, add(sux, bs));
+			
+			Statement(sux);
+		}
+		
+//		|	"break" ";"
+		
+		else if (sym == break_)
+		{
+			scan();
+			check(semicolon, sux);
+		}
+		
+//		|	"return" [Expr] ";"
+		
+		else if (sym == return_)
+		{
 			scan();
 			
-			if(exprStart.get(sym))
-				Expr();
+			if (!exprStart.get(sym) && sym != semicolon)
+				error("Greska - Statement.", add(add(sux, exprStart), new int[] {semicolon}));
 			
-			check(semicolon);
-		} else if(sym == read_) {
-			scan();
-			check(lpar);
-			Designator();
-			check(rpar);
-			check(semicolon);
-		} else if(sym == print_) {
-			scan();
-			check(lpar);
-			Expr();
+			if (exprStart.get(sym))
+				Expr(add(sux, new int[] {semicolon}));
 			
-			if(sym == comma) {
+			check(semicolon, sux);
+		}
+		
+//		|	"read" "(" Designator ")" ";"
+		
+		else if (sym == read_)
+		{
+			scan();
+			check(lpar, add(sux, new int[] {ident, rpar, semicolon}));
+			Designator(add(sux, new int[] {rpar, semicolon}));
+			check(rpar, add(sux, new int[] {semicolon}));
+			check(semicolon, sux);
+		}
+		
+//		|	"print" "(" Expr ["," number] ")" ";"
+		
+		else if (sym == print_)
+		{
+			scan();
+			check(lpar, add(add(sux, new int[] {comma, rpar, semicolon}), exprStart));
+			Expr(add(sux, new int[] {comma, rpar, semicolon}));
+			
+			if (sym != comma && sym != rpar)
+				error("Greska - Statement.", add(sux, new int[] {comma, rpar, semicolon}));
+			
+			if (sym == comma)
+			{
 				scan();
-				check(number);
+				check(number, add(sux, new int[] {rpar, semicolon}));
+			}
+			check(rpar, add(sux, new int[] {semicolon}));
+			check(semicolon, sux);
+		}
+		
+//		|	Block
+		
+		else if (sym == lbrace)
+		{
+			Block(sux);
+		}
+		
+//		|	";".
+		
+		else if (sym == semicolon)
+			scan();		
+	}
+	
+	private static void ActPars(BitSet sux)
+	{
+//		ActPars	=	Expr {"," Expr}.
+		
+		BitSet bs = new BitSet();
+		bs.set(comma);
+		
+		Expr(add(sux, bs));
+		
+		while (true)
+		{
+			if (sym == comma)
+			{
+				scan();
+				Expr(add(sux, bs));
+			}
+			else if (sux.get(sym))
+				break;
+			else
+				error("Greska - ActPars.", add(sux, bs));
+		}
+	}
+	
+	private static void Condition(BitSet sux)
+	{
+//		Condition	=	CondTerm {"||" CondTerm}.
+		
+		BitSet bs = new BitSet();
+		bs.set(or);
+		
+		CondTerm(add(sux, bs));
+		
+		while (true)
+		{
+			if (sym == or)
+			{
+				scan();
+				CondTerm(add(sux, bs));
+			}
+			else if (sux.get(sym))
+				break;
+			else
+				error("Greska - Condition.", add(sux, bs));
+		}
+	}
+	
+	private static void CondTerm(BitSet sux)
+	{
+//		CondTerm	=	CondFact {"&&" CondFact}.
+		
+		BitSet bs = new BitSet();
+		bs.set(and);
+		
+		CondFact(add(sux, bs));
+		
+		while (true)
+		{
+			if (sym == and)
+			{
+				scan();
+				CondFact(add(sux, bs));
+			}
+			else if (sux.get(sym))
+				break;
+			else
+				error("Greska - Condition.", add(sux, bs));
+		}
+	}
+	
+	private static void CondFact(BitSet sux)
+	{
+//		CondFact	=	Expr Relop Expr.
+		
+		BitSet bs = new BitSet();
+		bs.set(eql);
+		bs.set(neq);
+		bs.set(gtr);
+		bs.set(geq);
+		bs.set(lss);
+		bs.set(leq);
+		bs = add(exprStart, bs);
+		
+		Expr(add(sux, bs));
+		Relop(add(sux, exprStart));
+		Expr(sux);
+	}
+	
+	private static void Relop(BitSet sux)
+	{
+//		Relop	=	"==" | "!=" | ">" | ">=" | "<" | "<=".
+		
+		BitSet bs = new BitSet();
+		bs.set(eql);
+		bs.set(neq);
+		bs.set(gtr);
+		bs.set(geq);
+		bs.set(lss);
+		bs.set(leq);
+		
+		if (!bs.get(sym))
+			error("Greska - Relop.", add(sux, bs));
+		
+		if (bs.get(sym))
+			scan();
+	}
+	
+	private static void Expr(BitSet sux)
+	{
+//		Expr	=	["-"] Term {Addop Term}.
+		
+		BitSet bs = new BitSet();
+		bs = add(bs, exprStart);
+		bs.set(plus); // bs = First(Term) + {plus, minus}
+		
+		if (!exprStart.get(sym))
+			error("Greska - Expr - Ocekivan minus, ident, number, charConst, new ili (", add(sux, bs));
+		
+		if (sym == minus)
+			scan();
+		
+		Term(add(sux, new int[] {plus, minus}));
+		
+		while (true)
+		{
+			if (sym == plus || sym == minus)
+			{
+				Addop(add(sux, bs));
+				Term(add(sux, new int[] {plus, minus}));
+			}
+			else if (sux.get(sym))
+				break;
+			else
+				error("Greska - Expr - ocekivan Addop", add(sux, new int[] {plus, minus}));
+		}
+	}
+	
+	private static void Term(BitSet sux)
+	{
+//		Term	=	Factor {Mulop Factor}.
+		
+		BitSet bsMulop = new BitSet();
+		bsMulop = add(bsMulop, new int[] {times, slash, rem});
+		
+		Factor(add(sux, bsMulop));
+		
+		BitSet bsFactor = new BitSet();
+		bsFactor = add(bsFactor, exprStart);
+		bsFactor.clear(minus);
+		bsFactor = add(bsFactor, bsMulop);
+		
+		while (true)
+		{
+			if (bsMulop.get(sym))
+			{
+				Mulop(add(sux, bsFactor));
+				Factor(add(sux, bsMulop));
+			}
+			else if (sux.get(sym))
+				break;
+			else
+				error("Greska - Term.", add(sux, bsMulop));
+		}
+	}
+	
+	private static void Factor(BitSet sux)
+	{
+//		Factor	=	Designator ["(" [ActPars] ")"]
+//				|	number
+//				|	charConst
+//				|	"new" ident ["[" Expr "]"]
+//				|	"(" Expr ")".
+		
+		BitSet bs = new BitSet();
+		bs = add(bs, new int[] {ident, number, charCon, new_, lpar});
+		
+		if (!bs.get(sym))
+			error("Greska - Factor - ocekivan ident, number, charConst, new ili (", add(sux, bs));
+		
+//		Designator ["(" [ActPars] ")"]
+		
+		if (sym == ident)
+		{
+			Designator(add(sux, new int[] {lpar}));
+			
+			if (sym != lpar && !sux.get(sym))
+				error("Greska - Factor.", add(sux, new int[] {lpar}));
+			
+			if (sym == lpar)
+			{
+				scan();
+				if (!exprStart.get(sym) && sym != rpar)
+					error("Greska - Factor.", add(add(sux, new int[] {rpar}), exprStart));
+				
+				if (exprStart.get(sym))
+					ActPars(add(sux, new int[] {rpar}));
+				
+				check(rpar, sux);
+			}
+		}
+		
+//		|	number |	charConst
+		
+		else if (sym == number || sym == charCon)
+			scan();
+		
+//		|	"new" ident ["[" Expr "]"]
+		
+		else if (sym == new_)
+		{
+			scan();
+			check(ident, add(sux, new int[] {lbrack}));
+			
+			if (sym != lbrack && !sux.get(sym))
+				error("Greska - Factor.", add(sux, new int[] {lbrack}));
+			
+			if (sym == lbrack)
+			{
+				scan();
+				Expr(add(sux, new int[] {rbrack}));
+				check(rbrack, sux);
 			}
 			
-			check(rpar);
-			check(semicolon);
-		} else if(sym == lbrace) 
-			Block();
-		else if(sym == semicolon)
-			scan();
-		else
-			synErr("Invalid statement!");
-	}
-	
-	public static void ActPars() {
-		Expr();
-		
-		while(sym == comma) {
-			scan();
-			Expr();
 		}
-	}
-	
-	public static void Condition() {
-		CondTerm();
 		
-		while(sym == or) {
+//		|	"(" Expr ")".
+		
+		else if (sym == lpar)
+		{
 			scan();
-			CondTerm();
+			Expr(add(sux, new int[] {rpar}));
+			check(rpar, sux);
 		}
+
 	}
 	
-	public static void CondTerm() {
-		CondFact();
+	private static void Designator(BitSet sux)
+	{
+//		Designator	=	ident {"." ident | "[" Expr "]"}.
 		
-		while(sym == and) {
-			scan();
-			CondFact();
-		}
-	}
-	
-	public static void CondFact() {
-		Expr();
-		Relop();
-		Expr();
-	}
-	
-	public static void Relop() {
-		if(sym == eql || sym == neq || sym == gtr || sym == geq || sym == lss ||  sym == leq) 
-			scan();
-		else 
-			synErr("Invalid relation operation!");
-	}
-	
-	public static void Expr() {
-		if(sym == minus)
-			scan();
+		BitSet bsBeginLoop = new BitSet();
+		bsBeginLoop = add(bsBeginLoop, new int[] {period, lbrack});
+		check(ident, add(sux, bsBeginLoop));
 		
-		Term();
-		
-		while(sym == minus || sym == plus) {
-			Addop();
-			Term();
-		}
-	}
-	
-	public static void Term() {
-		Factor();
-		
-		while(sym == times || sym == rem || sym == slash) {
-			Mulop();
-			Factor();			
-		}
-	}
-	
-	public static void Factor() {
-		if(sym == ident) {
-			Designator();
-			if(sym == lpar) {
-				scan();
-				if(exprStart.get(sym))
-					ActPars();
-				check(rpar);
+		while (true)
+		{
+			if (sym == period || sym == lbrack)
+			{
+				if (sym == period)
+				{
+					scan();
+					check(ident, add(sux, bsBeginLoop));
+				}
+				else
+				{
+					scan();
+					Expr(add(sux, new int[] {rbrack, period, lbrack}));
+					check(rbrack, add(sux, bsBeginLoop));
+				}
 			}
-		} else if(sym == number || sym == charCon)
-			scan();
-		else if(sym == new_) {
-			scan();
-			check(ident);
-			if(sym == lbrack) {
-				scan();
-				Expr();
-				check(rbrack);
-			}
-		} else if(sym == lpar) {
-			scan();
-			Expr();
-			check(rpar);
-		} else 
-			synErr("Invalid factor!");
-	}
-	
-	public static void Designator() {
-		check(ident);
-		while(sym == period || sym == lbrack) {
-			scan();
-			if(sym == ident)
-				scan();
-			else {
-				Expr();
-				check(rbrack);
-			}
+			else if (sux.get(sym))
+				break;
+			else
+				error("Greska - Designator.", add(sux, bsBeginLoop));
 		}
 	}
 	
-	public static void Addop() {
-		if(sym == plus || sym == minus)
+	private static void Addop(BitSet sux)
+	{
+//		Addop	=	"+" | "-".
+		
+		if (sym != plus && sym != minus)
+			error("Greska - Addop.", add(sux, new int[] {plus, minus}));
+		
+		if (sym == plus || sym == minus)
 			scan();
-		else
-			synErr("Invalid addop!");
 	}
 	
-	public static void Mulop() {
-		if(sym == times || sym == slash || sym == rem)
+	private static void Mulop(BitSet sux)
+	{
+//		Mulop	=	"*" | "/" | "%".
+		
+		if (sym != times && sym != slash && sym != rem)
+			error("Greska - Mulop.", add(sux, new int[] {times, slash, rem}));
+		
+		if (sym == times || sym == slash || sym == rem)
 			scan();
-		else
-			synErr("Invalid mulop!");
 	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
 }
