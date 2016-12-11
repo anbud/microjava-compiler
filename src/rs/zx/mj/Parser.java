@@ -77,6 +77,9 @@ public class Parser {
 	private static Token la;		// lookahead token
 	private static int sym;			// always contains la.kind
 	private static int lastErrPos;	// last error position (avoid spurious errors)
+	
+	private static Struct curMethod;
+	private static int loopDepth;
 
 	private static BitSet exprStart, statStart, statFollow, declStart, declFollow;
 	// private static Obj method;		  // currently compiled method
@@ -107,15 +110,14 @@ public class Parser {
 		// Tab.init(); Code.init();
 		// intType = Tab.intType; charType = Tab.charType;
 		scan();
+		Tab.init();
 		Program();
-		if (sym != eof) synErr("end of file found before end of program");
+		if (sym != eof) error("end of file found before end of program");
 		// if (Code.mainPc < 0) semErr("program contains no 'main' method");
 		// Tab.dumpScope(Tab.topScope.locals);
-	}
+	}	
 	
-	
-	
-	public static void synErr(String msg) {
+	public static void error(String msg) {
 		Errors.println(Scanner.line, Scanner.col, msg);
 		System.exit(0);
 	}
@@ -130,13 +132,14 @@ public class Parser {
 		if(exp == sym) 
 			scan();
 		else
-			synErr("Expected " + name[exp]);
+			error("Expected " + name[exp]);
 	}
 	//The actual grammar
 	
 	public static void Program() {
 		check(program_);
 		check(ident);
+		Tab.openScope();
 		while(sym == final_ || sym == ident || sym == class_) 
 			if(sym == final_)
 				ConstDecl();
@@ -150,29 +153,44 @@ public class Parser {
 			MethodDecl();
 		
 		check(rbrace);
+		if(Tab.find("main") == Tab.noObj)
+			error("No main method.");
+		
+		Tab.closeScope();
 	}
 	
 	public static void ConstDecl() {
 		check(final_);
-		Type();
+		Struct type = Type();
 		check(ident);
+		Obj o = Tab.insert(Obj.Con, t.string, type);
 		check(assign);
 		
-		if(sym == number || sym == charCon)
+		if(sym == number) {
 			scan();
-		else
-			synErr("Number or char constant expected");
+			if(type != Tab.intType)
+				error("Integer expected.");
+			o.val = t.val;
+		} else if(sym == charCon) {
+			scan();
+			if(type != Tab.charType)
+				error("Char expected.");
+			o.val = t.val;
+		} else
+			error("Number or char constant expected");
 		
 		check(semicolon);
 	}
 	
 	public static void VarDecl() {
-		Type();
+		Struct type = Type();
 		check(ident);
+		Obj o = Tab.insert(Obj.Var, t.string, type);
 		
 		while(sym == comma) {
 			scan();
 			check(ident);
+			o = Tab.insert(Obj.Var, t.string, type);
 		}
 		
 		check(semicolon);		
@@ -181,54 +199,87 @@ public class Parser {
 	public static void ClassDecl() {
 		check(class_);
 		check(ident);
+		Obj o = Tab.insert(Obj.Type, t.string, new Struct(Struct.Class));
 		check(lbrace);
-		
+		Tab.openScope();		
 		while(sym == ident)
 			VarDecl();
 		
+		o.type.fields = Tab.curScope.locals;
+		o.type.nFields = Tab.curScope.nVars;
+		
 		check(rbrace);
+		Tab.closeScope();
 	}
 	
 	public static void MethodDecl() {
+		Struct type = Tab.noType;
+		int nPars = 0;
+		
 		if(sym == void_) 
 			scan();
 		else if(sym == ident)
-			Type();
+			type = Type();
 		else
-			synErr("Type or void expected!");
+			error("Type or void expected!");
 		
 		check(ident);
+		Obj o = Tab.insert(Obj.Meth, t.string, type);
 		check(lpar);
+		Tab.openScope();
 		
 		if(sym == ident)
-			FormPars();
+			nPars = FormPars();
 		
 		check(rpar);
+		if(o.name.equals("main")) 
+			if(nPars != 0)
+				error("Main method ne moze imati parametre.");
+			else if(type != Tab.noType)
+				error("Main method mora biti void.");
 		
 		while(sym == ident)
 			VarDecl();
 		
+		o.locals = Tab.curScope.locals;
+		o.nPars = nPars;
 		Block();
+		Tab.closeScope();
 	}
 	
-	public static void FormPars() {
-		Type();
+	public static int FormPars() {
+		int nPars = 1;
+		Struct type = Type();
 		check(ident);
+		Tab.insert(Obj.Var, t.string, type);
 		
 		while(sym == comma) {
 			scan();
-			Type();
+			type = Type();
 			check(ident);
+			Tab.insert(Obj.Var, t.string, type);
+			nPars++;
 		}
+		
+		return nPars;
 	}
 	
-	public static void Type() {
+	public static Struct Type() {
 		check(ident);
+		Obj o = Tab.find(t.string);
+		
+		if(o.kind != Obj.Type)
+			error("Type expected.");
+		
+		Struct type = o.type;
 		
 		if(sym == lbrack) {
 			scan();
 			check(rbrack);
+			type = new Struct(Struct.Arr, type);
 		}
+		
+		return type;
 	}
 	
 	public static void Block() {
@@ -241,21 +292,41 @@ public class Parser {
 	}
 	
 	public static void Statement() {
+		Obj o;
+		Struct type;
 		if(sym == ident) {
-			Designator();
+			o = Designator();
 			
-			while(sym == assign || sym == lpar || sym == pplus || sym == mminus) {
-				if(sym == assign) {
-					scan();
-					Expr();
-				} else if(sym == lpar) {
-					scan();
-					if(exprStart.get(sym))
-						ActPars();
-					check(rpar);
-				} else 
-					scan();
+			if(sym == assign) {
+				scan();
+				type = Expr();
+				if(o.kind == Obj.Var) {
+					if(!type.assignableTo(o.type)) {
+						error("Incompatible types.");
+					}
+				} else {
+					error("Designator has to be a variable.");
+				}
+						
 			}
+			else if(sym == lpar) {
+				scan();
+				if(o.kind != Obj.Meth)
+					error("Designator has to be a method.");
+				
+				if(exprStart.get(sym))
+					ActPars(o);
+				else if(o.nPars != 0)
+					error("Less paramaters than expected.");
+					
+				check(rpar);
+			}
+			else if(sym == pplus || sym == mminus) {
+				scan();
+				if(o.type != Tab.intType)
+					error("Designator has to be an integer variable.");
+			} else
+				error("invalid statement");
 			
 			check(semicolon);
 		} else if(sym == if_) {
@@ -274,28 +345,41 @@ public class Parser {
 			check(lpar);
 			Condition();
 			check(rpar);
+			loopDepth++;
 			Statement();
+			loopDepth--;
 		} else if(sym == break_) {
 			scan();
+			if(loopDepth == 0)
+				error("break has to be in a loop.");
 			check(semicolon);
 		} else if(sym == return_) {
 			scan();
 			
-			if(exprStart.get(sym))
-				Expr();
+			
+			if(exprStart.get(sym)) {
+				type = Expr();
+			
+				if(!type.compatibleWith(curMethod))
+					error("Incompatible return value.");
+			} else if(curMethod != Tab.noType)
+				error("Missing return value.");
 			
 			check(semicolon);
 		} else if(sym == read_) {
 			scan();
 			check(lpar);
-			Designator();
+			o = Designator();
+			if(o.type != Tab.intType && o.type != Tab.charType)
+				error("Invalid read paramater.");
 			check(rpar);
 			check(semicolon);
 		} else if(sym == print_) {
 			scan();
 			check(lpar);
-			Expr();
-			
+			type = Expr();
+			if(type != Tab.intType && type != Tab.charType)
+				error("Invalid print paramater.");
 			if(sym == comma) {
 				scan();
 				check(number);
@@ -308,16 +392,32 @@ public class Parser {
 		else if(sym == semicolon)
 			scan();
 		else
-			synErr("Invalid statement!");
+			error("Invalid statement!");
 	}
 	
-	public static void ActPars() {
-		Expr();
+	public static void ActPars(Obj o) {
+		Obj l = o.locals;
+		Struct type;
+		if(o.nPars == 0)
+			error("More parameters than expected.");
+		type = Expr();
+		if(!type.assignableTo(l.type))
+			error("Incompatible actual parameter.");
 		
-		while(sym == comma) {
+		int curPar = 1;
+		while(sym == comma && curPar < o.nPars) {
 			scan();
-			Expr();
+			type = Expr();
+			
+			l = l.next;
+			if(!type.assignableTo(l.type))
+				error("Incompatible actual parameter.");
+			curPar++;
 		}
+		if(sym == comma)
+			error("More parameters than expected.");
+		else if(curPar < o.nPars)
+			error("Less parameters than expected.");
 	}
 	
 	public static void Condition() {
@@ -339,90 +439,150 @@ public class Parser {
 	}
 	
 	public static void CondFact() {
-		Expr();
-		Relop();
-		Expr();
+		Struct t1 = Expr();
+		int rel = Relop();
+		Struct t2 = Expr();
+		
+		if(rel == eql || rel == neq) {
+			if(!t1.compatibleWith(t2))
+				error("Incompatible types.");
+		} else {
+			if(t1.isRefType() || t2.isRefType())
+				error("Incompatible types.");
+		}
 	}
 	
-	public static void Relop() {
+	public static int Relop() {
 		if(sym == eql || sym == neq || sym == gtr || sym == geq || sym == lss ||  sym == leq) 
 			scan();
 		else 
-			synErr("Invalid relation operation!");
+			error("Invalid relation operation!");
+		
+		return t.kind;
 	}
 	
-	public static void Expr() {
-		if(sym == minus)
+	public static Struct Expr() {
+		boolean sgnMin = false;
+		
+		if(sym == minus) {
 			scan();
+			sgnMin = true;
+		}
 		
-		Term();
-		
+		Struct type = Term();
+		if(sgnMin && type != Tab.intType)
+			error("Minus can be applied to integers only.");
+		if((sym == plus || sym == minus) && type != Tab.intType)
+			error("Minus or plus can be applied to integers only.");
 		while(sym == minus || sym == plus) {
 			Addop();
-			Term();
+			type = Term();
+			if(type != Tab.intType)
+				error("Minus or plus can be applied to integers only.");
 		}
+		return type;
 	}
 	
-	public static void Term() {
-		Factor();
+	public static Struct Term() {
+		Struct type;
+		type = Factor();
 		
+		if((sym == times || sym == rem || sym == slash) && type != Tab.intType)
+			error("Times, slash and rem can be applied to integers only.");
 		while(sym == times || sym == rem || sym == slash) {
 			Mulop();
-			Factor();			
+			type = Factor();			
+			if(type != Tab.intType)
+				error("Times, slash and rem can be applied to integers only.");
 		}
+		
+		return type;
 	}
 	
-	public static void Factor() {
+	public static Struct Factor() {
+		Struct type;
+		Obj o;
 		if(sym == ident) {
-			Designator();
+			o = Designator();
 			if(sym == lpar) {
 				scan();
+				if(o.kind != Obj.Meth)
+					error("Designator has to be a method.");
 				if(exprStart.get(sym))
-					ActPars();
+					ActPars(o);
+				else if(o.nPars != 0)
+					error("Less parameters than expected.");
 				check(rpar);
+				return o.type;
 			}
-		} else if(sym == number || sym == charCon)
+		} else if(sym == number) {
 			scan();
-		else if(sym == new_) {
+			return Tab.intType;
+		} else if(sym == charCon) {
+			scan();
+			return Tab.charType;
+		} else if(sym == new_) {
 			scan();
 			check(ident);
+			o = Tab.find(t.string);
+			if(o.kind == Obj.Type || o.type.kind == Struct.Arr)
+				error("Type or array expected.");
 			if(sym == lbrack) {
 				scan();
-				Expr();
+				type = Expr();
+				if(type != Tab.intType)
+					error("Array index must be an integer.");
 				check(rbrack);
+				return new Struct(Struct.Arr, type);
 			}
+			return o.type;
 		} else if(sym == lpar) {
 			scan();
-			Expr();
+			type = Expr();
 			check(rpar);
+			return type;
 		} else 
-			synErr("Invalid factor!");
+			error("Invalid factor!");
+		
+		return Tab.noType;
 	}
 	
-	public static void Designator() {
+	public static Obj Designator() {
 		check(ident);
+		Obj o = Tab.find(t.string);
+		Struct type;
 		while(sym == period || sym == lbrack) {
-			scan();
-			if(sym == ident)
+			if(sym == period) {
 				scan();
-			else {
-				Expr();
+				check(ident);
+				return Tab.findField(t.string, o.type);
+			} else {
+				scan();
+				type = Expr();
 				check(rbrack);
+				if(type != Tab.intType)
+					error("Array index must be an integer.");
+				if(o.type.kind != Struct.Arr) 
+					error("Must be an array.");
+				
+				return new Obj(Obj.Var, "XXXX", o.type.elemType);
 			}
 		}
+		
+		return null;
 	}
 	
 	public static void Addop() {
 		if(sym == plus || sym == minus)
 			scan();
 		else
-			synErr("Invalid addop!");
+			error("Invalid addop!");
 	}
 	
 	public static void Mulop() {
 		if(sym == times || sym == slash || sym == rem)
 			scan();
 		else
-			synErr("Invalid mulop!");
+			error("Invalid mulop!");
 	}
 }
