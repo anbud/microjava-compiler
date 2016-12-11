@@ -226,6 +226,7 @@ public class Parser {
 		check(ident);
 		Obj o = Tab.insert(Obj.Meth, t.string, type);
 		check(lpar);
+		curMethod = type;
 		Tab.openScope();
 		
 		if(sym == ident)
