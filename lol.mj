@@ -1,14 +1,15 @@
 program P 
+int a;
+char b;
 {
 	void main() 
 	{
-		int a = 999999999999999999;
-		int b = ''';
+		a = 9999;
+		b = ''';
 		if(a == b) {
-			print(a)
+			print(1);
 		} //komentar
 		a++;
-		--a;
 		//nista
 	}
 }

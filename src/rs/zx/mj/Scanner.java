@@ -289,14 +289,15 @@ public class Scanner {
 		try {
 			Scanner.init(new BufferedReader(new FileReader(new File("lol.mj"))));
 			
-			for(;;) {
+			/*for(;;) {
 				Token t = Scanner.next();
 				
 				if(t.kind != eof)
 					System.out.println(t);
 				else
 					break;
-			}
+			}*/
+			Parser.parse();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

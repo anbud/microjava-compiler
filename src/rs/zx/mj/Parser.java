@@ -569,7 +569,7 @@ public class Parser {
 			}
 		}
 		
-		return null;
+		return o;
 	}
 	
 	public static void Addop() {
