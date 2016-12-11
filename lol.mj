@@ -3,7 +3,7 @@ program P
 	void main() 
 	{
 		int a = 999999999999999999;
-		int b = 'a';
+		int b = ''';
 		if(a == b) {
 			print(a)
 		} //komentar
