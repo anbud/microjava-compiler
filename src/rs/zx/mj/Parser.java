@@ -324,7 +324,7 @@ public class Parser {
 			}
 			else if(sym == pplus || sym == mminus) {
 				scan();
-				if(o.type != Tab.intType)
+				if(o.kind != Obj.Var && o.type != Tab.intType)
 					error("Designator has to be an integer variable.");
 			} else
 				error("invalid statement");
@@ -361,7 +361,7 @@ public class Parser {
 			if(exprStart.get(sym)) {
 				type = Expr();
 			
-				if(!type.compatibleWith(curMethod))
+				if(!type.assignableTo(curMethod))
 					error("Incompatible return value.");
 			} else if(curMethod != Tab.noType)
 				error("Missing return value.");
@@ -371,7 +371,7 @@ public class Parser {
 			scan();
 			check(lpar);
 			o = Designator();
-			if(o.type != Tab.intType && o.type != Tab.charType)
+			if(o.kind != Obj.Var || (o.type != Tab.intType && o.type != Tab.charType))
 				error("Invalid read paramater.");
 			check(rpar);
 			check(semicolon);
@@ -444,13 +444,16 @@ public class Parser {
 		int rel = Relop();
 		Struct t2 = Expr();
 		
-		if(rel == eql || rel == neq) {
-			if(!t1.compatibleWith(t2))
-				error("Incompatible types.");
-		} else {
-			if(t1.isRefType() || t2.isRefType())
+		if(t1.isRefType() || t2.isRefType()) {
+			if(rel == eql || rel == neq) {
+				if(!t1.compatibleWith(t2))
+					error("Incompatible types.");
+			}
+			else
 				error("Incompatible types.");
 		}
+		else if(!t1.compatibleWith(t2))
+			error("Incompatible types.");
 	}
 	
 	public static int Relop() {
@@ -526,16 +529,20 @@ public class Parser {
 			scan();
 			check(ident);
 			o = Tab.find(t.string);
-			if(o.kind == Obj.Type || o.type.kind == Struct.Arr)
-				error("Type or array expected.");
+			
 			if(sym == lbrack) {
+				if(o.kind != Obj.Type) // class, int, char
+					error("Type expected.");
 				scan();
 				type = Expr();
 				if(type != Tab.intType)
 					error("Array index must be an integer.");
 				check(rbrack);
-				return new Struct(Struct.Arr, type);
+				return new Struct(Struct.Arr, o.type);
 			}
+			else if(o.type.kind != Struct.Class) // only class
+				error("Class expected.");
+			
 			return o.type;
 		} else if(sym == lpar) {
 			scan();
