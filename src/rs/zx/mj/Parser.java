@@ -550,26 +550,35 @@ public class Parser {
 	
 	public static Obj Designator() {
 		check(ident);
+
 		Obj o = Tab.find(t.string);
-		Struct type;
+
 		while(sym == period || sym == lbrack) {
 			if(sym == period) {
+				if(o.type.kind != Struct.Class)
+					error("Designator must be a class.");
+
 				scan();
 				check(ident);
-				return Tab.findField(t.string, o.type);
-			} else {
+
+				o = Tab.findField(t.string, o.type);
+			}
+			else {
+				if(o.type.kind != Struct.Arr)
+					error("Designator must be an array.");
+
 				scan();
-				type = Expr();
-				check(rbrack);
+				Struct type = Expr();
+
 				if(type != Tab.intType)
 					error("Array index must be an integer.");
-				if(o.type.kind != Struct.Arr) 
-					error("Must be an array.");
-				
-				return new Obj(Obj.Var, "XXXX", o.type.elemType);
+
+				check(rbrack);
+
+				o = new Obj(Obj.Var, "", o.type.elemType);
 			}
 		}
-		
+
 		return o;
 	}
 	
