@@ -31,6 +31,10 @@ public class Tab {
 	public static Obj ordObj;
 	public static Obj lenObj;
 	public static Obj noObj;
+	
+	private static void error(String msg) {
+		Errors.println(Scanner.line, Scanner.col, msg);
+	}
 
 	public static void openScope() {
 		Scope s = new Scope();
@@ -59,7 +63,7 @@ public class Tab {
 		
 		for(; iter != null; last = iter, iter = iter.next) 
 			if(iter.name.equals(ret.name))
-				Parser.error(ret.name + " already defined.");
+				error(ret.name + " already defined.");
 		
 		if(last == null)
 			curScope.locals = ret;
@@ -77,7 +81,7 @@ public class Tab {
 				if(o.name.equals(name))
 					return o;
 		
-		Parser.error(name + " undefined.");
+		error(name + " undefined.");
 		return noObj;
 	}
 
@@ -87,7 +91,7 @@ public class Tab {
 			if(o.name.equals(name))
 				return o;
 		
-		Parser.error(name + " undefined.");
+		error(name + " undefined.");
 		return noObj;
 	}
 
@@ -162,11 +166,5 @@ public class Tab {
 		lenObj.locals = new Obj(Obj.Var, "a", new Struct(Struct.Arr, noType));
 		lenObj.nPars = 1;
 	}
+
 }
-
-
-
-
-
-
-
