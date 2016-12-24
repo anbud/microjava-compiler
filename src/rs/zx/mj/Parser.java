@@ -516,9 +516,9 @@ public class Parser {
 					ActPars(o);
 				else if(o.nPars != 0)
 					error("Less parameters than expected.");
-				check(rpar);
-				return o.type;
+				check(rpar);	
 			}
+			return o.type;
 		} else if(sym == number) {
 			scan();
 			return Tab.intType;
